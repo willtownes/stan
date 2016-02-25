@@ -2,6 +2,7 @@
 # https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started#how-to-use-rstan
 
 library(rstan)
+library(reshape2)
 rstan_options(auto_write=TRUE)
 options(mc.cores=parallel::detectCores())
 
@@ -49,5 +50,14 @@ stan_params<-stan_params[-12,1]
 stan_err<-stan_params-true_params
 stan_rel_err<-stan_err/true_params
 
-rel_err<-cbind(frq_rel_err,stan_rel_err)
-rel_err
+rel_err<-data.frame(var=names(stan_params),OLS=frq_rel_err,STAN=stan_rel_err)
+plot_dat<-melt(rel_err,variable.name="method",id.vars="var",value.name="rel_err")
+ggplot(data=plot_dat,aes(var,rel_err))+geom_bar(aes(fill=method),position="dodge",stat="identity")+theme_bw()
+ggplot(data=plot_dat[-c(6,7,17,18),],aes(var,rel_err))+geom_bar(aes(fill=method),position="dodge",stat="identity")+theme_bw()
+
+mse_frq<-sum(frq_err^2)/11
+mse_stan<-sum(stan_err^2)/11
+mse_frq
+mse_stan
+
+#we see that the stan method gives very similar results to the OLS method due to the uninformative prior.
