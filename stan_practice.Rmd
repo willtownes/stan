@@ -1,3 +1,11 @@
+---
+title: "Stan Practice"
+author: "Will Townes"
+date: "February 25, 2016"
+output: pdf_document
+---
+
+```{r}
 # basic stan tutorial, following 
 # https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started#how-to-use-rstan
 
@@ -61,3 +69,4 @@ mse_frq
 mse_stan
 
 #we see that the stan method gives very similar results to the OLS method due to the uninformative prior.
+```
