@@ -5,24 +5,30 @@ date: "February 25, 2016"
 output: pdf_document
 ---
 
-```{r}
-# basic stan tutorial, following 
-# https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started#how-to-use-rstan
+This is my first attempt at using Stan, loosely following this [tutorial](https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started#how-to-use-rstan). First we have to load the library and set some basic options. Setting the seed is for reproducibility.
 
+```{r}
 library(rstan)
 library(reshape2)
 rstan_options(auto_write=TRUE)
 options(mc.cores=parallel::detectCores())
-
 set.seed(39)
+```
+
+### Linear Regression with Homoskedastic Errors
+This is a super basic model, just to make sure everything behaves as expected. The parameters are a vector of regression coefficients and the variance parameter $\sigma^2$. The model is:
+$$Y\sim\mathcal{N}(\mu+X\beta,\sigma^2 \mathbb{I})$$
+
+```{r}
 #super basic example: linear regression with homoskedastic errors
 #Y~N(mu+Xb,sigma2)
 # X is an 50x9 matrix where each column is gaussian(5,sd=3)
 X<-replicate(9,rnorm(50,5,3))
-colMeans(X)
-apply(X,2,sd)
-#true parameter values:
-
+colMeans(X) #should be 5
+apply(X,2,sd) #should be 3
+```
+Now we set the parameters to true values, and we will later try to recover these in the Stan model. We intentionally allow some coefficients to be near zero to see if Stan detects any false positives.
+```{r}
 mu<-33
 b<-c(-3,-1.5,-.5,-.25,-0.01,0.01,.5,1,1.5) 
 #strong negative: 1,2
@@ -32,28 +38,58 @@ b<-c(-3,-1.5,-.5,-.25,-0.01,0.01,.5,1,1.5)
 #strong positive: 8,9
 sigma2<-4 #fairly high level of noise
 y<-rnorm(50,mu+X%*%b,sqrt(sigma2))
-frq<-lm(y~.,data=dat)
-summary(frq) #standard approach accurately recovers true parameter values.
+```
+First we will use the standard frequentist approach (maximum likelihood) to get a baseline for comparison.
+```{r}
+frq<-lm(y~X)
+summary(frq)
+```
+The standard approach accurately recovers true parameter values. We will save these for later to compare relative errors
+```{r}
 frq_params<-c(coef(frq),summary(frq)$sigma)
 N<-nrow(X)
 K<-ncol(X)
 true_params<-c(mu,b,sqrt(sigma2))
 frq_err<-frq_params-true_params
 frq_rel_err<-frq_err/true_params
-
-#run the stan program for linear regression. 
-#no need for data in list, stan searches calling environment
-lrfit<-stan(file="linreg.stan",iter=1000,chains=4) #takes about 7 seconds on my machine
+```
+Run the stan program for linear regression. There is no need for data in a list like in the example on their website, since stan searches the calling environment. The stan code is in a separate file. It looks like this:
+```
+data {
+    int<lower=0> N;
+    int<lower=0> K;
+    matrix[N,K] X;
+    vector[N] y;
+}
+parameters {
+    real alpha;
+    vector[K] beta;
+    real<lower=0> sigma;
+}
+model {
+    y ~ normal(alpha + X*beta, sigma);
+}
+```
+Note that we did not specify priors, so Stan just uses default "flat" priors. This is the most similar to the frequentist approach so the result should be very similar also.
+```{r}
+system.time(lrfit<-stan(file="linreg.stan",iter=1000,chains=4))
+```
+I noticed that the time was about 20 seconds the first time I ran the command, probably due to the C++ program compiling. But when I ran the command again, it only took 5 seconds. This is still a lot slower than the frequentist approach. Next, let's explore the output of the Stan program.
+```{r}
 print(lrfit) #lrfit is S4 object of class stanfit
-help("stanfit-class")
+#help("stanfit-class")
 #get posterior means
-summary(lrfit)
+#summary(lrfit)
 stan_params<-summary(lrfit)$summary
 stan_signif<-stan_params[,"2.5%"]*stan_params[,"97.5%"]>0
-#stan found 4,5,6 to be not significant from zero versus true value being 5,6.
-#the frequentist approach (OLS) made the same mistake (see above).
-#compare stan values and frequentist values to true values
-
+```
+Stan found variables 4,5,6 to be not significant from zero versus true value being 5,6. The frequentist approach (OLS) made the same mistake (see above). Let's look at some pretty graphs!
+```{r,echo=FALSE}
+quietgg(plot(lrfit,plotfun="hist",pars=NULL,include=FALSE))
+pairs(lrfit,pars=c("alpha","beta[1]","beta[7]","sigma")) #rather slow.
+```
+We now compare the relative errors of stan and lm
+```{r}
 stan_params<-stan_params[-12,1]
 stan_err<-stan_params-true_params
 stan_rel_err<-stan_err/true_params
@@ -67,6 +103,8 @@ mse_frq<-sum(frq_err^2)/11
 mse_stan<-sum(stan_err^2)/11
 mse_frq
 mse_stan
-
-#we see that the stan method gives very similar results to the OLS method due to the uninformative prior.
 ```
+We see that the stan method gives very similar results to the OLS method due to the uninformative prior.
+
+### Coming Soon- more interesting models!
+I will use this template to practice with Stan in more interesting and complicated/ useful models in the future.
