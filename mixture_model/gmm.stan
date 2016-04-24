@@ -2,7 +2,7 @@ data {
   int<lower=0> N;  // number of data points
   int<lower=1> D;  // number of dimensions
   int<lower=1> K;  // number of clusters
-  vector[D] y[N];  // observations
+  vector[D] y[N];  // observations- store y in a list in R if univariate
 }
 transformed data {
   real<upper=0> neg_log_K;

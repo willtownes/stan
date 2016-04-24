@@ -31,25 +31,31 @@ K<-2
 z<-rbinom(N,1,1/2)
 mu<-c(0,5)
 y<-lapply(z,function(x){rnorm(1,mean=mu[x+1],sd=1)})
-hist(unlist(y))
+y<-unlist(y)
+hist(y)
+a<-2 # prior sample size, larger values=more regularization of cluster assignments
 ```
 
 We now fit the stan object to the data. Data are found in the calling environment so need to specify explicitly.
 
 ```{r}
-system.time(gmm1<-stan(file="gmm.stan",iter=1000,chains=4))
+stanfile<-"gmm2.stan"
+system.time(gmm1<-stan(file=stanfile,iter=100,chains=2))
 print(gmm1)
 ```
-This gives a bad result since the posterior mean is not a good estimator for mixture models. An alternative is to do MAP estimation. We can recover a Laplace confidence interval (similar to frequentist Wald interval) by taking the inverse of the negative Hessian matrix.
+This sometimes gives a bad result since the posterior mean is not a good estimator for mixture models. An alternative is to do MAP estimation. We can recover a Laplace confidence interval (similar to frequentist Wald interval) by taking the inverse of the negative Hessian matrix.
 
 ```{r}
-system.time(gmm1<-optimizing(stan_model(file="gmm.stan"),hessian=TRUE))
-muhat<-gmm1$par[1:2] #mean params
-sterr<-sqrt(diag(solve(-gmm1$hessian)))
-res<-data.frame(mu=muhat,lower=muhat-sterr*1.96,upper=muhat+sterr*1.96)
+system.time(gmm1<-optimizing(stan_model(file=stanfile),hessian=TRUE))
+npars<-3*K-1
+post_mean<-gmm1$par #point estimates
+sterr<-c(rep(NA,K),sqrt(diag(solve(-gmm1$hessian[2:npars,2:npars]))))
+res<-data.frame(post_mean=post_mean,lower=post_mean-sterr*1.96,upper=post_mean+sterr*1.96)
 knitr::kable(res)
 ```
 Success! Below is the result from variational inference.
 ```{r}
-
+system.time(gmm2<-vb(stan_model(file=stanfile)))
+summary(gmm2)$summary[1:npars,c("mean","2.5%","97.5%")]
 ```
+

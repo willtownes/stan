@@ -22,3 +22,4 @@ vignettes/*.pdf
 #other
 *.rda
 *.pdf
+*.dcf
