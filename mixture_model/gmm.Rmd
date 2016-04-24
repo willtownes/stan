@@ -9,7 +9,8 @@ Here I am trying to create a gaussian mixture model in Stan. Stan doesn't suppor
 
 ```{r}
 library(rstan)
-library(reshape2)
+#library(reshape2)
+library(knitr) #kable function for pretty table display
 rstan_options(auto_write=TRUE)
 options(mc.cores=parallel::detectCores())
 set.seed(39)
@@ -48,7 +49,7 @@ sterr<-sqrt(diag(solve(-gmm1$hessian)))
 res<-data.frame(mu=muhat,lower=muhat-sterr*1.96,upper=muhat+sterr*1.96)
 knitr::kable(res)
 ```
-Success! If we want measures of uncertainty, we can use a LaPlace approximation or variational inference. Below is the result from variational inference.
+Success! Below is the result from variational inference.
 ```{r}
 
 ```
