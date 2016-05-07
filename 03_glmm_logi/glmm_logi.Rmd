@@ -1,75 +1,55 @@
 ---
-title: "Linear Regression with Stan"
+title: "Logistic Regression with Random Intercepts"
 author: "Will Townes"
-date: "February 25, 2016"
+date: "May 7, 2016"
 output: html_document
 ---
-
-This is my first attempt at using Stan, loosely following this [tutorial](https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started#how-to-use-rstan). First we have to load the library and set some basic options. Setting the seed is for reproducibility.
 
 ```{r}
 library(rstan)
 library(reshape2)
+library(plyr)
+library(lme4)
 rstan_options(auto_write=TRUE)
 options(mc.cores=parallel::detectCores())
 set.seed(39)
 ```
 
-### Linear Regression with Homoskedastic Errors
-This is a super basic model, just to make sure everything behaves as expected. The parameters are a vector of regression coefficients and the variance parameter $\sigma^2$. The model is:
-$$Y\sim\mathcal{N}(\mu+X\beta,\sigma^2 \mathbb{I})$$
+### Model Specification
+
+The outcome for $i^{th}$ observation in $k^{th}$ cluster is binary $Y_{ki}$ with $P(Y_{ki}=1)=g(X_{ki}\beta+\gamma_k)$ where $\beta$ are the fixed effects, $X_{ki}$ is the vector of covariates, and $\gamma_k$ is a random intercept shared among all observations in the cluster. In traditional mixed models, we assume $\gamma_k\sim\mathcal{N}(0,\sigma^2_\gamma)$ but in the Bayesian context we can specify more flexible distributions for $\gamma_k$.
+
+### Generating Simulated Data
 
 ```{r}
-#super basic example: linear regression with homoskedastic errors
-#Y~N(mu+Xb,sigma2)
-# X is an 50x9 matrix where each column is gaussian(5,sd=3)
-X<-replicate(9,rnorm(50,5,3))
-colMeans(X) #should be 5
-apply(X,2,sd) #should be 3
-```
-Now we set the parameters to true values, and we will later try to recover these in the Stan model. We intentionally allow some coefficients to be near zero to see if Stan detects any false positives.
-```{r}
-mu<-33
-b<-c(-3,-1.5,-.5,-.25,-0.01,0.01,.5,1,1.5) 
-#strong negative: 1,2
-#weak negative: 3,4
-#insignificant effects: 5,6
-#weak positive: 7
-#strong positive: 8,9
-sigma2<-4 #fairly high level of noise
-y<-rnorm(50,mu+X%*%b,sqrt(sigma2))
+expit<-function(x){1/(1+exp(-x))}
+N<-100 #clusters
+n<-10 #observations/cluster
+beta_true=c(-2,1,.5) #fixed effects
+sigma<-2 #random effects standard deviation
+dat<-data.frame(id=factor(rep(1:N,each=n)))
+x1<-rbinom(N,1,.5)
+dat$x1<-rep(x1,each=n) #cluster-specific covar
+dat$x2<-rep(seq(from=-4.5,to=4.5),N) #within-cluster covar
+dat<-within(dat,eta<-beta_true[1]+x1*beta_true[2]+x2*beta_true[3])
+#random intercepts
+bdat<-data.frame(id=factor(1:N),b=rnorm(N,0,sigma)) 
+dat<-join(dat,bdat,by="id")
+dat<-within(dat,mu<-expit(eta+b))
+dat$y<-rbinom(N*n,1,dat$mu)
+dat_obs<-dat[,c("id","x1","x2","y")]
 ```
 First we will use the standard frequentist approach (maximum likelihood) to get a baseline for comparison.
 ```{r}
-frq<-lm(y~X)
+frq<-glmer(y~x1+x2+(1|id),data=dat_obs,family=binomial)
 summary(frq)
 ```
-The standard approach accurately recovers true parameter values. We will save these for later to compare relative errors
-```{r}
-frq_params<-c(coef(frq),summary(frq)$sigma)
-N<-nrow(X)
-K<-ncol(X)
-true_params<-c(mu,b,sqrt(sigma2))
-frq_err<-frq_params-true_params
-frq_rel_err<-frq_err/true_params
-```
-Run the stan program for linear regression. There is no need for data in a list like in the example on their website, since stan searches the calling environment. The stan code is in a separate file. It looks like this:
-```
-data {
-    int<lower=0> N;
-    int<lower=0> K;
-    matrix[N,K] X;
-    vector[N] y;
-}
-parameters {
-    real alpha;
-    vector[K] beta;
-    real<lower=0> sigma;
-}
-model {
-    y ~ normal(alpha + X*beta, sigma);
-}
-```
+Recall the true fixed effects are $-2,1,.5$ and the random effect standard deviation is $2$.
+
+### Stan Program
+
+Run the stan program for random intercepts logistic regression. There is no need for data in a list like in the example on their website, since stan searches the calling environment. The stan code is in a separate file. It looks like this:
+
 Note that we did not specify priors, so Stan just uses default "flat" priors. This is the most similar to the frequentist approach so the result should be very similar also.
 ```{r}
 system.time(lrfit<-stan(file="linreg.stan",iter=1000,chains=4))
