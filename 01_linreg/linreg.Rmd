@@ -1,5 +1,5 @@
 ---
-title: "Stan Practice"
+title: "Linear Regression with Stan"
 author: "Will Townes"
 date: "February 25, 2016"
 output: html_document
