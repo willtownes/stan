@@ -9,21 +9,18 @@ data {
 parameters {
     real alpha; #intercept
     vector[D] beta; #fixed effects
-    #real<lower=0> sigma; #stdev of random intercepts
+    real<lower=0> sigma; #stdev of random intercepts
     vector[K] rand_ints;
 }
 model {
   vector[N] eta;
-  for(d in 1:D) beta[d]~normal(0,5);
+  for(d in 1:D) beta[d]~cauchy(0,5);
   # prior for random effect stdev
-  #sigma~cauchy(0,5);
-  #increment_log_prob(log(2)-log(sigma)); #is this needed?
+  sigma~cauchy(0,5);
   #prior for random effects
   for(k in 1:K){
-    rand_ints[k]~normal(0,2);
+    rand_ints[k]~normal(0,sigma);
   }
-  # alternative if sigma not needed, nu=2a,t2=b/a
-  # rand_ints~student_t(2*.5,0,sqrt(100/.5));
   for(n in 1:N){
     eta[n]<-alpha + X[n]*beta + rand_ints[id[n]];
   }
