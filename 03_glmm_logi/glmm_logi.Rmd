@@ -23,20 +23,20 @@ The outcome for $i^{th}$ observation in $k^{th}$ cluster is binary $Y_{ki}$ with
 
 ```{r}
 expit<-function(x){1/(1+exp(-x))}
-N<-100 #clusters
+K<-100 #clusters
 n<-10 #observations/cluster
 beta_true=c(-2,1,.5) #fixed effects
 sigma<-2 #random effects standard deviation
-dat<-data.frame(id=factor(rep(1:N,each=n)))
-x1<-rbinom(N,1,.5)
+dat<-data.frame(id=factor(rep(1:K,each=n)))
+x1<-rbinom(K,1,.5)
 dat$x1<-rep(x1,each=n) #cluster-specific covar
-dat$x2<-rep(seq(from=-4.5,to=4.5),N) #within-cluster covar
+dat$x2<-rep(seq(from=-4.5,to=4.5),K) #within-cluster covar
 dat<-within(dat,eta<-beta_true[1]+x1*beta_true[2]+x2*beta_true[3])
 #random intercepts
-bdat<-data.frame(id=factor(1:N),b=rnorm(N,0,sigma)) 
+bdat<-data.frame(id=factor(1:K),b=rnorm(K,0,sigma)) 
 dat<-join(dat,bdat,by="id")
 dat<-within(dat,mu<-expit(eta+b))
-dat$y<-rbinom(N*n,1,dat$mu)
+dat$y<-rbinom(K*n,1,dat$mu)
 dat_obs<-dat[,c("id","x1","x2","y")]
 ```
 First we will use the standard frequentist approach (maximum likelihood) to get a baseline for comparison.
@@ -48,11 +48,16 @@ Recall the true fixed effects are $-2,1,.5$ and the random effect standard devia
 
 ### Stan Program
 
-Run the stan program for random intercepts logistic regression. There is no need for data in a list like in the example on their website, since stan searches the calling environment. The stan code is in a separate file. It looks like this:
+Run the stan program for random intercepts logistic regression. There is no need for data in a list like in the example on their website, since stan searches the calling environment. The stan code is in a separate file. Commonly, one may specify a normal distribution with mean zero and variance $\sigma^2$ as the random effects distribution, and then place an inverse gamma conjugate prior on $\sigma^2$ with shape $a$ and scale $b$. However, this scheme can be analytically marginalized out if $\sigma^2$ is not of intrinsic interest. If $\sigma^2\sim\mathcal{IG}(a,b)$ then set $\nu=2a$ and $\tau^2=a/b$ so that $\sigma^2\sim\mathcal{IG}(\nu/2,\nu \tau^2/2)$. This is equivalent to a scaled inverse chi-squared prior, with the property that $\tau^2=E[\sigma^2]$. Analytically integrating out $\sigma^2$, we obtain a marginal Student's t prior for the random effects with degrees of freedom $\nu$, mean zero, and scale parameter $\tau^2$.
 
-Note that we did not specify priors, so Stan just uses default "flat" priors. This is the most similar to the frequentist approach so the result should be very similar also.
 ```{r}
-system.time(lrfit<-stan(file="linreg.stan",iter=1000,chains=4))
+#row_vector[D] X[N]; #covariate design matrix
+X<-as.matrix(dat_obs[,c("x1","x2")])
+D<-ncol(X)
+N<-nrow(X)
+y<-dat_obs$y #force numeric
+id<-as.numeric(dat_obs$id)
+system.time(stfit<-stan(file="glmm_logi.stan",iter=100,chains=1))
 ```
 I noticed that the time was about 20 seconds the first time I ran the command, probably due to the C++ program compiling. But when I ran the command again, it only took 5 seconds. This is still a lot slower than the frequentist approach. Next, let's explore the output of the Stan program.
 ```{r}

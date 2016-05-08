@@ -1,14 +1,31 @@
 data {
-    int<lower=0> N;
-    int<lower=0> K;
-    matrix[N,K] X;
-    vector[N] y;
+    int<lower=0> N; #number of total observations
+    int<lower=1> D; #dimensionality of covariates, excluding intercept
+    int<lower=1> K; #number of clusters
+    matrix[N,D] X; #covariate design matrix
+    int<lower=0,upper=1> y[N]; #binary outcome
+    int<lower=1,upper=K> id[N]; #cluster id
 }
 parameters {
-    real alpha;
-    vector[K] beta;
-    real<lower=0> sigma;
+    real alpha; #intercept
+    vector[D] beta; #fixed effects
+    #real<lower=0> sigma; #stdev of random intercepts
+    vector[K] rand_ints;
 }
 model {
-    y ~ normal(alpha + X*beta, sigma);
+  vector[N] eta;
+  for(d in 1:D) beta[d]~normal(0,5);
+  # prior for random effect stdev
+  #sigma~cauchy(0,5);
+  #increment_log_prob(log(2)-log(sigma)); #is this needed?
+  #prior for random effects
+  for(k in 1:K){
+    rand_ints[k]~normal(0,2);
+  }
+  # alternative if sigma not needed, nu=2a,t2=b/a
+  # rand_ints~student_t(2*.5,0,sqrt(100/.5));
+  for(n in 1:N){
+    eta[n]<-alpha + X[n]*beta + rand_ints[id[n]];
+  }
+  y ~ bernoulli_logit(eta);
 }
