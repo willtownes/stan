@@ -9,28 +9,24 @@ data {
   int<lower=1,upper=K> id[N]; #cluster id
 }
 transformed data {
-  real alpha;
-  real<lower=0> ysd;
-  vector<lower=0>[K] alphavec; //vector of Dirichlet probabilities
-  alpha <- a; //weird: Stan doesn't allow assign alpha as data value directly
-  ymean<-mean(y); //empirical bayes hyperparameters
-  ysd<-sd(y);
-  alphavec <- rep_vector(alpha / K,K); //strange that rep_array failed here
+  vector<lower=0>[J] alphavec; //vector of Dirichlet params
+  alphavec <- rep_vector(a / J,J); //strange that rep_array failed here
 }
 parameters {
-    real fixed_int; #intercept
-    vector[D] beta; #fixed effects
-    vector[K] rand_ints;
-    
+  real fixed_int; #intercept 
+  vector[D] beta; #fixed effects
+  vector[K] rand_ints;
+  simplex[J] theta; //mixing proportions
+  real mu[J]; // cluster means
+  real<lower=0> sigma[J]; //scale parameters of mixture components
 }
 model {
-  real soft_z[J]; //comment out if assigning soft cluster IDs
+  real soft_z[J]; //move to params block if assigning soft cluster IDs
   vector[N] eta;
-  
   // priors
   theta ~ dirichlet(alphavec); //mixing probabilities
   mu ~ cauchy(0,5);
-  sigma ~ cauchy(0,2);
+  sigma ~ cauchy(0,1);
   #for(d in 1:D) beta[d]~cauchy(0,5);
   beta~cauchy(0,5);
   #mixture prior for random effects

@@ -17,7 +17,7 @@ set.seed(39)
 
 ### Model Specification
 
-The outcome for $i^{th}$ observation in $k^{th}$ cluster is binary $Y_{ki}$ with $P(Y_{ki}=1)=g(X_{ki}\beta+\gamma_k)$ where $\beta$ are the fixed effects, $X_{ki}$ is the vector of covariates, and $\gamma_k$ is a random intercept shared among all observations in the cluster. In traditional mixed models, we assume $\gamma_k\sim\mathcal{N}(0,\sigma^2_\gamma)$ but in the Bayesian context we can specify more flexible distributions for $\gamma_k$.
+The outcome for $i^{th}$ observation in $k^{th}$ cluster is binary $Y_{ki}$ with $P(Y_{ki}=1)=g(X_{ki}\beta+\gamma_k)$ where $\beta$ are the fixed effects, $X_{ki}$ is the vector of covariates, and $\gamma_k$ is a random intercept shared among all observations in the cluster. In traditional mixed models, we assume $\gamma_k\sim\mathcal{N}(0,\sigma^2_\gamma)$ but in the Bayesian context we can specify more flexible distributions for $\gamma_k$. Specifically here we consider the model where $\gamma_k$ comes from a two component gaussian mixture model.
 
 ### Generating Simulated Data
 
@@ -26,14 +26,14 @@ expit<-function(x){1/(1+exp(-x))}
 gen_data<-function(beta_true){
   K<-100 #clusters
   n<-10 #observations/cluster
-  sigma<-2 #random effects standard deviation
   dat<-data.frame(id=factor(rep(1:K,each=n)))
   x1<-rbinom(K,1,.5)
   dat$x1<-rep(x1,each=n) #cluster-specific covar
   dat$x2<-rep(seq(from=-4.5,to=4.5),K) #within-cluster covar
   dat<-within(dat,eta<-beta_true[1]+x1*beta_true[2]+x2*beta_true[3])
   #random intercepts
-  bdat<-data.frame(id=factor(1:K),b=rnorm(K,0,sigma)) 
+  mix_comp<-sample(c(-2,2),K,replace=TRUE)
+  bdat<-data.frame(id=factor(1:K),b=rnorm(K,mix_comp,.5)) 
   dat<-join(dat,bdat,by="id")
   dat<-within(dat,mu<-expit(eta+b))
   dat$y<-rbinom(K*n,1,dat$mu)
@@ -50,73 +50,28 @@ frq<-glmer(y~x1+x2+(1|id),data=dat_obs,family=binomial)
 summary(frq)
 ```
 
-Recall the true fixed effects are $-2,1,.5$ and the random effect standard deviation is $2$.
+Recall the true fixed effects are $-2,1,.5$.
 
 ### Stan Program
 
-Run the stan program for random intercepts logistic regression. There is no need for data in a list like in the example on their website, since stan searches the calling environment. The stan code is in a separate file. Commonly, one may specify a normal distribution with mean zero and variance $\sigma^2$ as the random effects distribution, and then place an inverse gamma conjugate prior on $\sigma^2$ with shape $a$ and scale $b$. However, this scheme can be analytically marginalized out if $\sigma^2$ is not of intrinsic interest. If $\sigma^2\sim\mathcal{IG}(a,b)$ then set $\nu=2a$ and $\tau^2=a/b$ so that $\sigma^2\sim\mathcal{IG}(\nu/2,\nu \tau^2/2)$. This is equivalent to a scaled inverse chi-squared prior, with the property that $\tau^2=E[\sigma^2]$. Analytically integrating out $\sigma^2$, we obtain a marginal Student's t prior for the random effects with degrees of freedom $\nu$, mean zero, and scale parameter $\tau^2$.
-
 ```{r}
-X<-as.matrix(dat_obs[,c("x1","x2")])
-D<-ncol(X)
-N<-nrow(X)
-y<-dat_obs$y #force numeric
-id<-as.numeric(dat_obs$id)
-system.time(stfit<-stan(file="glmm_logi.stan",iter=2000,chains=4))
+dat2stan<-function(dat){
+  #convenience for converting dataframe to list of needed parameters
+  X<-as.matrix(dat[,c("x1","x2")])
+  id<-as.numeric(dat$id)
+  J<-2
+  a<-J+2 #close to uniform Dirichlet
+  list(N=nrow(X),D=ncol(X),K=length(unique(id)),y=dat$y,X=X,id=id,J=J,a=a)
+}
+stmod<-stan_model(file="glmm_logi_mix.stan")
+system.time(stfit<-sampling(stmod,data=dat2stan(dat_obs),pars=c("fixed_int","beta","theta","mu","sigma"),iter=1000,control=list(adapt_delta=.85,max_treedepth=12)))
 summary(stfit)$summary[1:4,c("mean","2.5%","97.5%")]
+pairs(stfit,pars="mu") #distinctive bimodal distributions
 ```
 
-Now that the model has compiled, let's see if it saves time to run it again on a different dataset.
+We now try again on a different dataset
 
-```{r eval=FALSE}
-X<-as.matrix(dat_obs2[,c("x1","x2")])
-D<-ncol(X)
-N<-nrow(X)
-y<-dat_obs2$y #force numeric
-id<-as.numeric(dat_obs2$id)
-system.time(stfit<-stan(file="glmm_logi.stan",iter=2000,chains=4))
+```{r}
+system.time(stfit<-sampling(stmod,data=dat2stan(dat_obs2),pars=c("fixed_int","beta","theta","mu","sigma"),iter=1000,control=list(adapt_delta=.85,max_treedepth=12)))
 summary(stfit)$summary[1:4,c("mean","2.5%","97.5%")]
-```
-
-The amount of time is the same. 
-
-### Stan Front-End Packages
-
-As shown by [Kazuki Yoshida](http://rpubs.com/kaz_yos/glmm1), there are a number of convenient front-ends for stan. Let's try some of those out and see if results are comparable.
-
-```{r}
-library(brms)
-system.time(stfit2 <- brm(formula=y~x1+x2+(1|id), data=dat_obs, family="bernoulli"))
-summary(stfit2)
-```
-
-Looks pretty good! We can also extract the generated stan model. It looks like this:
-
-```{r}
-stfit2$model
-```
-
-This is useful if we want to run the same model multiple times. However, it does not allow us to run the model on multiple datasets without re-compiling. Each new dataset must be recompiled even if the stan code is the same. If the below code were run, it would show that when "fit" is specified, all other arguments including data are ignored and the model fits the first dataset and fails to fit the second dataset. In other words, don't do the following!
-
-```{r eval=FALSE}
-system.time(stfit2b<-brm(fit=stfit2,data=dat_obs2))
-summary(stfit2b)
-system.time(stfit2c<-brm(fit=stfit2,data=dat_obs2))
-summary(stfit2c)
-```
-
-Another front-end option is shown below.
-
-```{r}
-library(rstanarm)
-system.time(stfit3<-stan_glmer(formula=y~x1+x2+(1|id), data=dat_obs, family="binomial"))
-summary(stfit3)
-```
-
-Package brms appears to be faster than rstanarm. Finally, we try package MCMCglmm. I couldn't get it to run.
-
-```{r eval=FALSE}
-library(MCMCglmm)
-system.time(stfit4<-MCMCglmm(fixed=y~x1+x2, random=~(1:id), family="categorical", data=dat_obs))
-summary(stfit4)
 ```
