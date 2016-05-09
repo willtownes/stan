@@ -107,8 +107,13 @@ summary(stfit2c)
 We can use other brm functions though to separate out data transformations, compiling the stan program, etc. to save compilation time
 
 ```{r}
-brm_mod<-stan_model(model_code=stfit2$mod)
+#generate stan code (text)
+brm_code<-make_stancode(y~x1+x2+(1|id),data=dat_obs,family="bernoulli")
+#compile stan code to C++ program
+brm_mod<-stan_model(model_code=brm_code)
+#make list of all needed data variables
 brm_dat<-make_standata(y~x1+x2+(1|id),data=dat_obs,family="bernoulli")
+#run stan sampler
 system.time(stfit2b<-sampling(brm_mod,brm_dat,pars=c("b_Intercept","b","sd_1"),iter=1000))
 summary(stfit2b)$summary[,c("mean","2.5%","97.5%")]
 ```
