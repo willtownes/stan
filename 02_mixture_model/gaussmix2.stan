@@ -29,7 +29,7 @@ parameters {
 #   real<upper=0> soft_z[N,K]; // log probabilities of cluster assignments
 #   for (n in 1:N)
 #     for (k in 1:K)
-#       soft_z[n,k] = dirichlet_log(theta,alphavec) + normal_log(y[n],mu[k],sigma[k]);
+#       soft_z[n,k] = dirichlet_lpdf(theta,alphavec) + normal_lpdf(y[n],mu[k],sigma[k]);
 
 # }
 
@@ -47,7 +47,7 @@ model {
   //likelihood- method if we do not instantiate soft cluster IDs
   for(n in 1:N) {
     for(k in 1:K) {
-      soft_z[k] = dirichlet_log(theta,alphavec) + normal_log(y[n],mu[k],sigma[k]);
+      soft_z[k] = dirichlet_lpdf(theta | alphavec) + normal_lpdf(y[n] | mu[k],sigma[k]);
     }
     //increment_log_prob(log_sum_exp(soft_z));
     target += log_sum_exp(soft_z);
