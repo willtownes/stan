@@ -13,10 +13,10 @@ transformed data {
   real ymean;
   real<lower=0> ysd;
   vector<lower=0>[K] alphavec; //vector of Dirichlet probabilities
-  alpha <- a; //weird: Stan doesn't allow assign alpha as data value directly
-  ymean<-mean(y); //empirical bayes hyperparameters
-  ysd<-sd(y);
-  alphavec <- rep_vector(alpha / K,K); //strange that rep_array failed here
+  alpha = a; //weird: Stan doesn't allow assign alpha as data value directly
+  ymean=mean(y); //empirical bayes hyperparameters
+  ysd=sd(y);
+  alphavec = rep_vector(alpha / K,K); //strange that rep_array failed here
 }
 parameters {
   simplex[K] theta; //mixing proportions
@@ -29,7 +29,7 @@ parameters {
 #   real<upper=0> soft_z[N,K]; // log probabilities of cluster assignments
 #   for (n in 1:N)
 #     for (k in 1:K)
-#       soft_z[n,k] <- dirichlet_log(theta,alphavec) + normal_log(y[n],mu[k],sigma[k]);
+#       soft_z[n,k] = dirichlet_log(theta,alphavec) + normal_log(y[n],mu[k],sigma[k]);
 
 # }
 
@@ -47,8 +47,9 @@ model {
   //likelihood- method if we do not instantiate soft cluster IDs
   for(n in 1:N) {
     for(k in 1:K) {
-      soft_z[k] <- dirichlet_log(theta,alphavec) + normal_log(y[n],mu[k],sigma[k]);
+      soft_z[k] = dirichlet_log(theta,alphavec) + normal_log(y[n],mu[k],sigma[k]);
     }
-    increment_log_prob(log_sum_exp(soft_z));
+    //increment_log_prob(log_sum_exp(soft_z));
+    target += log_sum_exp(soft_z);
   }
 }
