@@ -1,0 +1,84 @@
+---
+title: "Factor Analysis"
+author: "Will Townes"
+date: "July 27, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(modules)
+import_package("rstan",attach=TRUE)
+MASS<-import_package("MASS")
+irlba<-import_package("irlba")
+import_package("Matrix",attach=TRUE)
+import_package("ggplot2",attach=TRUE)
+rstan_options(auto_write=TRUE)
+options(mc.cores=parallel::detectCores())
+set.seed(39)
+```
+
+### Simulate Data
+
+```{r}
+#params
+N<-80; G<-1000; censor_rate<-.9
+
+genCluster<-function(n,id,mu=c(0,0),sigma=diag(2)){
+  d<-data.frame(MASS$mvrnorm(n,mu,sigma))
+  d$id<-id
+  return(d)
+}
+
+censor<-function(Y,censor_rate){
+  Z<-matrix(rbinom(N*G,1,(1-censor_rate)),G)
+  Matrix(Y*Z) #apply censoring
+}
+
+sigma<-matrix(c(1.5,1.3,1.3,1.5),nrow=2)
+mu<-list(c(-3,3),c(5,5),c(3,-3),c(-5,-5))
+dat<-do.call("rbind",lapply(1:4,function(x){genCluster(N/4,x,mu[[x]],sigma)}))
+dat$id<-as.factor(as.character(dat$id))
+ggplot(dat,aes(x=X1,y=X2,color=id))+geom_point(size=3)+theme_bw()+ggtitle("Original Latent Space")
+
+#generate high dimensional version
+loadings<-matrix(rnorm(2*G),G)
+Y<-loadings%*%t(as.matrix(dat[,c("X1","X2")]))
+```
+
+### Censoring and PCA approach
+
+```{r}
+#Naive PCA approach
+svd1<-irlba$irlba(censor(Y,censor_rate),2)
+factors<-svd1$v%*%diag(svd1$d)
+colnames(factors)<-paste0("pca",1:2)
+ggplot(cbind(dat,factors),aes(x=pca1,y=pca2,color=id))+geom_point(size=3)+theme_bw()+ggtitle(paste("PCA Latent Space, censoring rate=",censor_rate))
+```
+
+### Factor Analysis in Stan
+
+```{r}
+#convert sparse matrix to stan-friendly long format
+Ys<-summary(censor(Y,censor_rate)) #converts to triplet format
+gg<-Ys[,1]; nn<-Ys[,2]; y<-Ys[,3] #stan variables
+nvals<-nrow(Ys); G<-max(gg); N<-max(nn)
+L<-2 #number of dimensions
+stanfile<-"factoranalysis.stan"
+#variational bayes
+mod1<-vb(stan_model(file=stanfile))
+res<-summary(mod1)$summary[,"mean"]
+u_res<-matrix(res[startsWith(names(res),"u[")],L)
+v_res<-matrix(res[startsWith(names(res),"v[")],L)
+#convert factors to orthonormal basis
+svd_v<-svd(v_res)
+A<-svd_v$u
+D<-diag(svd_v$d)
+#Q<-svd_v$v
+#loadings<-t(Q)
+factors<-crossprod(u_res,A%*%D)
+colnames(factors)<-paste0("fad",1:2)
+ggplot(cbind(dat,factors),aes(x=fad1,y=fad2,color=id))+geom_point(size=3)+theme_bw()+ggtitle(paste("FAD Latent Space, censoring rate=",censor_rate))
+```
