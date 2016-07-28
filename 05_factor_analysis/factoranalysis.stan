@@ -21,6 +21,6 @@ model {
   }
   // likelihood
   for (val in 1:nvals) {
-    y[val] ~ normal(u[nn[val]]'*v[gg[val]],1);
+    y[val] ~ normal(dot_product(u[nn[val]],v[gg[val]]),1);
   }
 }
