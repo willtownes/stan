@@ -51,9 +51,11 @@ Y<-loadings%*%t(as.matrix(dat[,c("X1","X2")]))
 ### Censoring and PCA approach
 
 ```{r}
+Y_obs<-censor(Y,censor_rate)
 #Naive PCA approach
-svd1<-irlba$irlba(censor(Y,censor_rate),2)
-factors<-svd1$v%*%diag(svd1$d)
+svd1<-irlba$irlba(scale(Y_obs),2)
+factors<-svd1$v%*%sqrt(diag(svd1$d))
+loadings<-svd1$u%*%sqrt(diag(svd1$d))
 colnames(factors)<-paste0("pca",1:2)
 ggplot(cbind(dat,factors),aes(x=pca1,y=pca2,color=id))+geom_point(size=3)+theme_bw()+ggtitle(paste("PCA Latent Space, censoring rate=",censor_rate))
 ```
@@ -62,13 +64,14 @@ ggplot(cbind(dat,factors),aes(x=pca1,y=pca2,color=id))+geom_point(size=3)+theme_
 
 ```{r}
 #convert sparse matrix to stan-friendly long format
-Ys<-summary(censor(Y,censor_rate)) #converts to triplet format
-gg<-Ys[,1]; nn<-Ys[,2]; y<-Ys[,3] #stan variables
+Ys<-summary(Y_obs) #converts to triplet format
+gg<-Ys[,1]; nn<-Ys[,2]; y<-Ys[,3] #stan data variables
 nvals<-nrow(Ys); G<-max(gg); N<-max(nn)
 L<-2 #number of dimensions
 stanfile<-"factoranalysis.stan"
+#initf1<-function(){list(u=factors,v=loadings)}
 #variational bayes
-mod1<-vb(stan_model(file=stanfile))
+mod1<-vb(stan_model(file=stanfile),output_samples=1)
 res<-summary(mod1)$summary[,"mean"]
 u_res<-matrix(res[startsWith(names(res),"u[")],L)
 v_res<-matrix(res[startsWith(names(res),"v[")],L)
