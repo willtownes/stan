@@ -16,8 +16,6 @@ rstan_options(auto_write=TRUE)
 options(mc.cores=max(1,parallel::detectCores()-1))
 ```
 
-
-
 ### Gaussian Process in Stan- Univariate Input
 
 Simulate Data. We use as an example the underlying function 
@@ -36,7 +34,12 @@ xtrain<-runif(N1,0,10)
 xtest<-seq(-5,15,length.out=N2)
 ytrain<-func(xtrain,beta0,beta)+rnorm(N1,0,sy)
 points(xtrain,ytrain)
-dat<-mget(c("xtrain","xtest","N1","N2","ytrain"))
+dat2stan<-function(ytrain,xtrain,xtest){
+  N1<-length(ytrain)
+  N2<-length(xtest)
+  mget(c("xtrain","xtest","N1","N2","ytrain"))
+}
+dat<-dat2stan(ytrain,xtrain,xtest)
 ```
 
 Run the Stan model
