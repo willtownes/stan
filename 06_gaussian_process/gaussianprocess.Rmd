@@ -1,0 +1,66 @@
+---
+title: "Gaussian Process"
+author: "Will Townes"
+date: "December 10, 2016"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+library(modules) #klmr/modules on github
+import_package("rstan",attach=TRUE)
+import_package("ggplot2",attach=TRUE)
+rstan_options(auto_write=TRUE)
+options(mc.cores=max(1,parallel::detectCores()-1))
+```
+
+
+
+### Gaussian Process in Stan- Univariate Input
+
+Simulate Data. We use as an example the underlying function 
+
+$$f(x) = \beta_0 + \beta_1 x + \sin(x) - \cos(2x)$$
+
+We generate data points from this function plus some gaussian noise.
+
+```{r}
+set.seed(39)
+#params
+beta<-0.3; beta0<-5; sy<-0.8; N1<-50; N2<-50;
+func<-function(x,beta0,beta){beta0+beta*x+sin(x)-cos(x*2)}
+curve(func(x,beta0,beta),to=10)
+xtrain<-runif(N1,0,10)
+xtest<-seq(-5,15,length.out=N2)
+ytrain<-func(xtrain,beta0,beta)+rnorm(N1,0,sy)
+points(xtrain,ytrain)
+dat<-mget(c("xtrain","xtest","N1","N2","ytrain"))
+```
+
+Run the Stan model
+
+```{r}
+stmod<-stan_model(file="gaussianprocess.stan")
+system.time(stfit<-sampling(stmod,data=dat))
+ypred<-summary(stfit,pars="ytest")$summary[,c("mean","2.5%","97.5%")]
+pairs(stfit,pars=c("beta","beta0","eta_sq","inv_rho_sq","sigma_sq"))
+```
+
+plotting the predictions and confidence bands
+
+```{r}
+curve(func(x,beta0,beta),from=-5,to=15,ylim=c(2,12),ylab="f(x)",main="Gaussian Process with Univariate Input")
+points(xtrain,ytrain)
+lines(xtest,ypred[,"mean"],col="blue")
+lines(xtest,ypred[,"2.5%"],col="blue",lty=2)
+lines(xtest,ypred[,"97.5%"],col="blue",lty=2)
+legend("topleft",c("truth","post. mean","95% conf. band"),lty=c(1,1,2),col=c("black","blue","blue"))
+```
+
+We see that the GP learned the nonlinear part of the function fairly well. Note that in the regions of $x$ outside of the observed data, the uncertainty increases and the function starts to look more linear. This is because the GP was centered around linear regression model. Let's check the linear regression coefficients to see if they were close to the correct values.
+
+```{r}
+summary(stfit,pars=c("beta","beta0","eta_sq","inv_rho_sq","sigma_sq"))$summary[,c("mean","2.5%","97.5%")]
+```
