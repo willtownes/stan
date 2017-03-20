@@ -1,0 +1,82 @@
+---
+title: "Sigmoid Regression"
+author: "Will Townes"
+date: "March 20, 2017"
+output: html_document
+---
+
+```{r}
+set.seed(101)
+library(rstan)
+library(ggplot2)
+rstan_options(auto_write=TRUE)
+options(mc.cores=max(1,parallel::detectCores()-1))
+```
+
+```{r}
+stmod<-stan_model(file="sigmoid_reg.stan") #compile step is slow
+```
+
+### Sigmoid Curve
+
+Suppose the data are based on a univariate relationship between continuous predictor x and binary outcome y according to the sigmoid relationship
+
+$$P(y=1)=l+(h-l)*g(a+b*x)$$
+
+where $l\geq 0$ is a lower bound, $h\leq 1$ is an upper bound, and $a,b$ are regression coefficients with $g(\cdot)$ as the usual inverse logit function
+
+$$g(t) = \frac{1}{1+\exp(-t)}$$
+
+Suppose $b>0$ so $g(\cdot)$ is increasing in $x$. The interpretation of the model is the same as logistic regression for $a,b$, except we reduce the influence of outliers. With logistic regression, we expect $P(y=1)$ to be effectively zero for very small values of $x$ whereas here, no matter how small $x$ is, there is always a small probability $l$ of observing $y=1$. Similarly, for very large values of $x$, there is still a small probability $1-h$ of observing $y=0$.
+
+### Simulated Data
+
+```{r}
+expit<-function(t){1/(1+exp(-t))}
+sigmoid_factory<-function(a,b,lo,hi){
+  function(x){lo+(hi-lo)*expit(a+b*x)}
+}
+sfunc<-sigmoid_factory(-3,.6,.2,.9)
+#curve(sfunc,from=-5,to=15,ylim=c(0,1))
+#abline(h=.2,lty=2)
+#abline(h=.9,lty=2)
+
+#simulate some data
+x<-rexp(1000,.2)-5
+y<-rbinom(length(x),1,sfunc(x))
+xpred<-seq(from=-6,to=20,length.out=100)
+ptrue<-sfunc(xpred)
+hist(x,breaks=50)
+```
+
+Note the simulated distribution provides many data points in the low values of x but small number of data points in high values of x
+
+### Compare Results
+
+```{r}
+#logistic regression result
+system.time(res1<-glm(y~x,family=binomial()))
+summary(res1)
+ypred1<-predict(res1,data.frame(x=xpred),type="response")
+
+#cauchit link function
+system.time(res2<-glm(y~x,family=binomial(link="cauchit")))
+summary(res2)
+ypred2<-predict(res2,data.frame(x=xpred),type="response")
+
+#Sigmoid regression result
+dat<-list(x,y,N=length(x),prior_mean=0,prior_sd=10)
+system.time(stfit<-optimizing(stmod,data=dat)) #optimize step is fast
+res3<-as.list(stfit$par[1:4])
+stfit_curve<-with(res3,sigmoid_factory(a,b,lo,hi))
+ypred3<-stfit_curve(xpred)
+
+#plot comparison of each model
+plot(xpred,ptrue,type="l",ylim=c(0,1),xlab="x",ylab="P(y=1|x)",lty=2)
+lines(xpred,ypred1,lty=1,col="red")
+lines(xpred,ypred2,lty=1,col="orange")
+lines(xpred,ypred3,lty=1,col="blue")
+legend("topleft",c("truth","logistic regression","cauchit regression","sigmoid regression"),lty=c(2,1,1,1),col=c("black","red","orange","blue"))
+```
+
+We see that the logistic curve actually does fairly well, but fails in the tail regions. In general, due to the influence of outliers, the logistic regression tends to underestimate the slope parameter to compensate. The sigmoid regression provides a better fit since it is not misspecified. Using a cauchit link in the logistic model can slightly reduce the influence of outliers but is still misspecified.

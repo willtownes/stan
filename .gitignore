@@ -24,3 +24,4 @@ vignettes/*.pdf
 *.pdf
 *.dcf
 *.html
+.DS_Store
