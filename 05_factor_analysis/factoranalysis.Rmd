@@ -1,23 +1,19 @@
 ---
 title: "Factor Analysis"
 author: "Will Townes"
-date: "July 27, 2016"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
 ```{r}
-library(modules)
-import_package("rstan",attach=TRUE)
-MASS<-import_package("MASS")
-irlba<-import_package("irlba")
-import_package("Matrix",attach=TRUE)
-import_package("ggplot2",attach=TRUE)
+library(rstan)
+library(MASS)
+library(irlba)
 rstan_options(auto_write=TRUE)
-options(mc.cores=parallel::detectCores())
+options(mc.cores=3)
 set.seed(39)
+
+fp<-file.path
+bp<-"05_factor_analysis"
 ```
 
 ### Simulate Data
@@ -27,7 +23,7 @@ set.seed(39)
 N<-80; G<-1000; censor_rate<-.9
 
 genCluster<-function(n,id,mu=c(0,0),sigma=diag(2)){
-  d<-data.frame(MASS$mvrnorm(n,mu,sigma))
+  d<-data.frame(mvrnorm(n,mu,sigma))
   d$id<-id
   return(d)
 }
@@ -45,7 +41,7 @@ ggplot(dat,aes(x=X1,y=X2,color=id))+geom_point(size=3)+theme_bw()+ggtitle("Origi
 
 #generate high dimensional version
 loadings<-matrix(rnorm(2*G),G)
-Y<-loadings%*%t(as.matrix(dat[,c("X1","X2")]))
+Y<-tcrossprod(loadings, as.matrix(dat[,c("X1","X2")]))
 ```
 
 ### Censoring and PCA approach
@@ -53,9 +49,9 @@ Y<-loadings%*%t(as.matrix(dat[,c("X1","X2")]))
 ```{r}
 Y_obs<-censor(Y,censor_rate)
 #Naive PCA approach
-svd1<-irlba$irlba(scale(Y_obs),2)
-factors<-svd1$v%*%sqrt(diag(svd1$d))
-loadings<-svd1$u%*%sqrt(diag(svd1$d))
+svd1<-irlba(scale(Y_obs),2)
+factors<-t(t(svd1$v)*svd1$d)
+loadings<-svd1$u
 colnames(factors)<-paste0("pca",1:2)
 ggplot(cbind(dat,factors),aes(x=pca1,y=pca2,color=id))+geom_point(size=3)+theme_bw()+ggtitle(paste("PCA Latent Space, censoring rate=",censor_rate))
 ```
@@ -68,10 +64,11 @@ Ys<-summary(Y_obs) #converts to triplet format
 gg<-Ys[,1]; nn<-Ys[,2]; y<-Ys[,3] #stan data variables
 nvals<-nrow(Ys); G<-max(gg); N<-max(nn)
 L<-2 #number of dimensions
-stanfile<-"factoranalysis.stan"
+stmod<-stan_model(fp(bp,"factoranalysis.stan"))
 #initf1<-function(){list(u=factors,v=loadings)}
+stan_data<-list(nvals=nvals,L=L,N=N,G=G,nn=nn,gg=gg,y=y)
 #variational bayes
-mod1<-vb(stan_model(file=stanfile),output_samples=1)
+mod1<-vb(stmod,data=stan_data,output_samples=100)
 res<-summary(mod1)$summary[,"mean"]
 u_res<-matrix(res[startsWith(names(res),"u[")],L)
 v_res<-matrix(res[startsWith(names(res),"v[")],L)
