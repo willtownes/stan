@@ -1,19 +1,16 @@
 ---
 title: "Gaussian Process"
 author: "Will Townes"
-date: "December 10, 2016"
 output: html_document
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
-```
 ```{r}
-library(modules) #klmr/modules on github
-import_package("rstan",attach=TRUE)
-import_package("ggplot2",attach=TRUE)
+library(rstan)
 rstan_options(auto_write=TRUE)
 options(mc.cores=max(1,parallel::detectCores()-1))
+
+fp<-file.path
+bp<-"06_gaussian_process"
 ```
 
 ### Gaussian Process in Stan- Univariate Input
@@ -45,7 +42,7 @@ dat<-dat2stan(ytrain,xtrain,xtest)
 Run the Stan model
 
 ```{r}
-stmod<-stan_model(file="gaussianprocess.stan")
+stmod<-stan_model(file=fp(bp,"gaussianprocess.stan"))
 system.time(stfit<-sampling(stmod,data=dat))
 ypred<-summary(stfit,pars="ytest")$summary[,c("mean","2.5%","97.5%")]
 pairs(stfit,pars=c("beta","beta0","eta_sq","inv_rho_sq","sigma_sq"))
