@@ -7,7 +7,7 @@ output: html_document
 ```{r}
 library(rstan)
 rstan_options(auto_write=TRUE)
-options(mc.cores=max(1,parallel::detectCores()-1))
+options(mc.cores=3)
 
 fp<-file.path
 bp<-"06_gaussian_process"
@@ -45,7 +45,7 @@ Run the Stan model
 stmod<-stan_model(file=fp(bp,"gaussianprocess.stan"))
 system.time(stfit<-sampling(stmod,data=dat))
 ypred<-summary(stfit,pars="ytest")$summary[,c("mean","2.5%","97.5%")]
-pairs(stfit,pars=c("beta","beta0","eta_sq","inv_rho_sq","sigma_sq"))
+pairs(stfit,pars=c("beta","beta0","rho","alpha","sigma"))
 ```
 
 plotting the predictions and confidence bands
@@ -62,5 +62,5 @@ legend("topleft",c("truth","post. mean","95% conf. band"),lty=c(1,1,2),col=c("bl
 We see that the GP learned the nonlinear part of the function fairly well. Note that in the regions of $x$ outside of the observed data, the uncertainty increases and the function starts to look more linear. This is because the GP was centered around linear regression model. Let's check the linear regression coefficients to see if they were close to the correct values.
 
 ```{r}
-summary(stfit,pars=c("beta","beta0","eta_sq","inv_rho_sq","sigma_sq"))$summary[,c("mean","2.5%","97.5%")]
+summary(stfit,pars=c("beta","beta0","rho","alpha","sigma"))$summary[,c("mean","2.5%","97.5%")]
 ```

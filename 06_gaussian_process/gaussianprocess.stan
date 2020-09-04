@@ -1,55 +1,50 @@
 data {
-  # N1,xtrain,ytrain are observed data
+  // N1,xtrain,ytrain are observed data
   int<lower=1> N1;
-  vector[N1] xtrain;
+  real xtrain[N1];
   vector[N1] ytrain;
-  # N2,xtest are covariate values on which to do predictions
+  // N2,xtest are covariate values on which to do predictions
   int<lower=1> N2;
-  vector[N2] xtest;
+  real xtest[N2];
 }
 transformed data {
-  int<lower=1> N;
-  vector[N1+N2] x;
-  N = N1+N2;
+  real delta = 1e-9; // small diagonal term to make cholesky stable
+  int<lower=1> N = N1+N2;
+  real x[N];
   for (n in 1:N1) x[n] = xtrain[n];
   for (n in 1:N2) x[N1+n] = xtest[n];
 }
 parameters {
-  real beta; #linear regression slope
-  real beta0; #intercept term
-  #covariance function hyperparameters
-  real<lower=0> eta_sq;
-  real<lower=0> inv_rho_sq;
-  real<lower=0> sigma_sq;
-  #predictions
-  vector[N2] ytest;
+  real beta; //linear regression slope
+  real beta0; //intercept term
+  // cholesky transformed isotropic latent vars
+  vector[N] eta;
+  //covariance function hyperparameters
+  real<lower=0> rho;
+  real<lower=0> alpha;
+  real<lower=0> sigma;
 }
 transformed parameters {
-  real<lower=0> rho_sq;
-  #vector[N1+N2] mu;
-  rho_sq = inv(inv_rho_sq);
-  #mu = x*beta;
+  vector[N] f;
+  {
+    matrix[N, N] L_K;
+    matrix[N, N] K = cov_exp_quad(x, alpha, rho);
+    // diagonal elements
+    for (n in 1:N) K[n, n] = K[n, n] + delta;
+    L_K = cholesky_decompose(K);
+    f = L_K*eta; 
+  }
 }
 model {
-  vector[N] y;
-  matrix[N1+N2, N1+N2] Sigma;
-  for (n in 1:N1) y[n] = ytrain[n];
-  for (n in 1:N2) y[N1+n] = ytest[n];
-  
-  // off-diagonal elements
-  for(i in 1:(N-1)) {
-    for(j in (i+1):N) {
-      Sigma[i,j] = eta_sq*exp(-rho_sq*pow(x[i]-x[j],2));
-      Sigma[j,i] = Sigma[i,j];
-    }
+  rho ~ inv_gamma(5, 5);
+  alpha ~ std_normal();
+  sigma ~ std_normal();
+  eta ~ std_normal();
+  for(n in 1:N1) ytrain[n]~normal(beta0+xtrain[n]*beta+f[n], sigma);
+}
+generated quantities {
+  vector[N2] ytest;
+  for(n in 1:N2){
+    ytest[n] = normal_rng(beta0+xtest[n]*beta+f[N1+n], sigma);
   }
-  // diagonal elements
-  for (k in 1:N) Sigma[k,k] = eta_sq + sigma_sq;
-  
-  eta_sq ~ cauchy(0,5);
-  inv_rho_sq ~ cauchy(0,5);
-  sigma_sq ~ cauchy(0,5);
-  beta ~ cauchy(0,5); #weak regularization of regression slope
-  #implicit uniform prior on regression coefficients y0,beta
-  y ~ multi_normal(beta0+x*beta, Sigma);
 }
